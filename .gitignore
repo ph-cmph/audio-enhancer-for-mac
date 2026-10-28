@@ -1,0 +1,17 @@
+.DS_Store
+/build*/
+/.build-tools/
+/dist/
+/third_party/JUCE/
+*.app/
+*.dSYM/
+*.o
+*.a
+*.log
+.env
+.env.*
+*.pem
+*.p12
+**/probe_out/
+**/Gilroy-*.ttf
+
