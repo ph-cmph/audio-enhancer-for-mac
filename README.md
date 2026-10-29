@@ -1,4 +1,4 @@
-# Audio Enhancer for Mac — 0.3.0 preview
+# Audio Enhancer for Mac — 0.4.0 preview
 
 **An independent, unofficial macOS audio enhancer derived from FxSound and community ports.** Not affiliated with or endorsed by FxSound LLC, Apple, JUCE or Existential Audio. FxSound's original DSP and upstream contributors are credited in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). This is not an official FxSound release. Apple Silicon build; macOS 13 or later. Stereo playback is the supported starting point.
 
@@ -7,7 +7,7 @@
 1. Open **Audio Enhancer for Mac.app**. Its power button starts grey/off, and launching the app does not change your sound output.
 2. Install the separately supplied **BlackHole 2ch** driver from Existential Audio if needed. The official installer requires administrator authorisation and a Mac restart; save your work first.
 3. Choose your actual speakers or headphones, then click the **power button**. It illuminates only after the audio engine starts successfully. Allow audio-input access if macOS asks. The app captures only the BlackHole virtual input, not a hardware microphone.
-4. Choose a preset or adjust the effects, equaliser and output gain. Your settings are kept locally.
+4. Choose a preset or adjust the effects, equaliser and output gain. Enhancements show values on a 0–10 scale; equaliser bands show signed dB. Changed controls also show their original preset values. Before switching away from edited settings, choose **Save a Copy**, **Discard**, or **Cancel**. Copies use new names so existing presets stay unchanged. Your working settings are kept locally, separately from preset files.
 5. Click the **power button** again to turn processing off and restore your previous output. Quitting also restores it. If you manually select a different output while processing, that choice is respected.
 
 If a device disconnects, processing stops and restores a connected output where possible. Choose an available device and restart processing. If a previous run was interrupted, the recovery journal is checked next time the app opens.
@@ -26,7 +26,7 @@ Live animation, effects-off and Stop/Start behaviour were verified with MacBook 
 
 ## What changed
 
-Version 0.3.0 is named **Audio Enhancer for Mac**. It uses a single power control, a more compact window, rounded neutral cards, system fonts, quieter sliders and colours that follow macOS Light/Dark appearance. Independent-project attribution remains in About. The original application identity and existing `FxSound Community` support folder are retained internally to preserve preferences, presets, permissions and route recovery; there is no automatic start after reopening.
+Version 0.4.0 adds fixed numerical readouts, original preset references, save-copy protection, a more balanced toolbar, and corrected light/dark backgrounds. **Audio Enhancer for Mac** uses a single power control, a more compact window, rounded neutral cards, system fonts, quieter sliders and colours that follow macOS Light/Dark appearance. Independent-project attribution remains in About. The original application identity and existing `FxSound Community` support folder are retained internally to preserve preferences, presets, permissions and route recovery; there is no automatic start after reopening.
 
 See [AUDIT.md](AUDIT.md) for reproduced issues, fixes and verification limits. Main changes include memory safety fixes for macOS integer widths, guarded control changes, bounded audio-buffer processing, safer routing and restoration, useful stopped/error states, saved sessions, working Unicode presets and a restrained blue interface using system fonts.
 
@@ -58,3 +58,13 @@ Local preferences and the output/virtual-volume recovery journals live under `~/
 ## Licence and attribution
 
 AGPL-3.0-or-later; full licence in LICENSE. Corresponding modified source accompanies this preview. See THIRD_PARTY_NOTICES.md for upstream authors, exact revisions and JUCE licence details.
+
+## Changes since 0.3.0
+
+- **Appearance:** opaque adaptive backgrounds keep text and surfaces consistent in light and dark mode.
+- **Layout:** preset, output and volume align across one row, with power and settings grouped above.
+- **Values:** fixed enhancement and equaliser readouts remain visible even when processing stops. A quieter reference appears beside a changed control.
+- **Presets:** switching away from edits asks whether to save a custom copy, discard or cancel. Saving and importing use unique names without overwriting an existing preset. Restored session edits retain the actual preset's original reference values.
+- **Labels:** corrected text encoding in the edited indicator and save actions.
+
+The public 0.4.0 build passes both automated test suites and strict local signature verification. The shared interface changes were checked live in dark appearance in the local development build; light/dark transitions were checked for the earlier appearance correction. See the audit for hardware coverage and remaining limitations.

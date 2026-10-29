@@ -74,3 +74,17 @@ Pinned revisions and licences are listed in THIRD_PARTY_NOTICES.md. Neither upst
 Device hot unplug, sleep/wake, latency and long listening sessions still require hardware validation. No login services have been installed. Bluetooth, HDMI, multichannel and bit-identical Windows output are not claimed. The current app is a stereo preview; the confirmed live path is limited to the USB DAC and format above.
 
 The wrapper uses a nonblocking DSP gate; a contended control or preset operation temporarily passes through dry audio. It is not a full hard-real-time audit of all inherited DSP internals. Final limiting is retained from the base and extreme post-gain may colour sound.
+
+## 0.3.1 appearance correction — 29 October 2026
+
+Reproduced from the supplied dark-mode screenshot: the main surface retained its earlier light window colour while labels and control cards used the dark palette. The RGB-only palette values had a zero alpha byte; MainComponent painted its background without correcting that alpha. FxPalette now returns opaque ARGB for every role, MainComponent declares its opaque painting contract, and MainWindow updates its own stored background on look-and-feel changes. Added regression coverage for all palette entries in both appearances, primary text contrast against the main/control surfaces, and exact window colours. The private installed build passed both CTest suites and strict signature verification. Live dark and light transitions were visually checked with processing active through Explorer² USB DAC, Classic Processing, 0 dB; the original Auto setting was restored. No DSP or audio routing logic was changed.
+
+## 0.3.2 toolbar layout — 29 October 2026
+
+Rebalanced the header actions and aligned preset/output/volume groups across the available width. Fixed selector geometry avoids controls shifting when a preset/device name changes. Selector changes during initial construction are ignored until the component has its size. Existing automated checks passed. These layout changes are included in 0.4.0 and were subsequently reviewed live in the local development build.
+
+## 2026-10-29 — numeric readouts and preset edit protection (0.4.0)
+
+Added fixed enhancement and EQ readouts with quiet original-value references, and a compact toolbar. Added PresetSession tracking, guarded preset switching, explicit save-copy naming without overwrites, stable file-based selection after rescans, session baseline recovery, and safer import/delete selection handling. Save failures retain the working settings. Replaced problematic non-ASCII action labels with English ASCII text and gave dialog alternatives a quieter appearance.
+
+Validation: preset edit/copy tests exercise original-file preservation, custom-name collisions, saved-value round trips, restored edits, failed loads/saves and independent master-volume/power state. Existing audio, routing, palette and bundle checks also run. The installed private build passed its test suite and strict signature verification. Live dark-mode UI showed fixed readouts and original references, the edited indicator, the switch prompt, and active audio visualisation. The neutral public 0.4.0 build also passes both CTest suites and strict local signature verification. It retains the public name, original artwork, attribution and licence notices.

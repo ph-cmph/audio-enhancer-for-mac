@@ -1,4 +1,4 @@
-// Independent macOS port modifications, 2026-10-28.
+// Independent macOS port modifications, 2026-10-29.
 // AGPL-3.0-or-later; retain original notices below. See MODIFICATIONS.md and LICENSE.
 #include "MainComponent.h"
 #include "FxTheme.h"
@@ -13,13 +13,26 @@ constexpr int kSavePresetId   = 9001;
 constexpr int kImportPresetId = 9002;
 constexpr int kDeletePresetId = 9003;
 
-// Layout constants matching Windows FxProView proportions
+// Two quiet toolbar rows above the main processing panels.
 constexpr int kMargin   = 24;
-constexpr int kHeaderH  = 76;
+constexpr int kHeaderH  = 68;
 constexpr int kComboH   = 60;
 constexpr int kGap      = 16;
-constexpr int kMainH    = 242;
+constexpr int kMainH    = 260;
 constexpr int kBottomH  = 20;
+
+void stylePresetDialog(juce::AlertWindow& alert)
+{
+    // A single primary action; quieter alternatives keep the decision easy to scan.
+    for (int i = 0; i < alert.getNumButtons(); ++i) {
+        if (auto* button = alert.getButton(i)) {
+            const auto background = juce::Colour(FxTheme::getColor(i == 0 ? FxColor::TextButtonBackground : FxColor::ComboBoxBackground));
+            const auto text = i == 0 ? juce::Colours::white : juce::Colour(FXCOLOR(DefaultText));
+            button->setColour(juce::TextButton::buttonColourId, background);
+            button->setColour(juce::TextButton::textColourOffId, text);
+        }
+    }
+}
 } // namespace
 
 juce::File MainComponent::bundledPresetDir()
@@ -37,6 +50,7 @@ juce::File MainComponent::userPresetDir()
 
 MainComponent::MainComponent()
 {
+    setOpaque(true);
     controller.prepare(48000, 512);
     controller.setPower(false);
 
@@ -74,25 +88,9 @@ MainComponent::MainComponent()
             return;
         }
 
-        // Real preset: combo id maps to preset index (id - 1).
-        const int idx = id - 1;
-        if (idx >= 0)
-        {
-            currentPresetId_ = id;
-            const bool ok = controller.loadPreset(presetLibrary.getPresetFile(idx));
-            if (ok)
-            {
-                syncProcessingState();
-                effectsPanel.update();
-                equalizerPanel.update();
-            }
-            else
-            {
-                reportError({ AudioEngineState::PresetFailedToLoad,
-                                        presetLibrary.getPresetName(idx) });
-            }
-        }
-        layoutTopRow(); // selected name changed → resize combo to fit it
+        const auto file = presetLibrary.getPresetFile(id - 1);
+        presetBox.setSelectedId(currentPresetId_, juce::dontSendNotification);
+        if (file != juce::File{}) requestPresetSwitch(file);
     };
 
     // Output selector
@@ -113,10 +111,12 @@ MainComponent::MainComponent()
             engine.setOutputDevice(outputBox.getText());
     };
 
-    // Volume control — "Volume" label above the themed slider, with the value shown
-    // in a dB read-out box right next to the slider (themed dark box, no harsh border).
+    // Volume shares the selectors row; all three labels use the same typography.
     volumeLabel.setText("Volume", juce::dontSendNotification);
     volumeLabel.setJustificationType(juce::Justification::centredLeft);
+    volumeLabel.getProperties().set("useOwnFont", true);
+    volumeLabel.setFont(juce::Font(11.0f));
+    volumeLabel.setBorderSize(juce::BorderSize<int>(0));
     addAndMakeVisible(volumeLabel);
 
     volumeSlider.setSliderStyle(juce::Slider::LinearHorizontal);
@@ -135,6 +135,7 @@ MainComponent::MainComponent()
     // Main panels
     addAndMakeVisible(effectsPanel);
     addAndMakeVisible(equalizerPanel);
+    effectsPanel.onEdited = equalizerPanel.onEdited = [this] { updatePresetDisplay(); };
 
     // Engine notifications are delivered on the message thread. SafePointer also
     // protects shutdown and future asynchronous device notifications.
@@ -149,7 +150,7 @@ MainComponent::MainComponent()
     for (int i = 0; i < presetLibrary.getNumPresets(); ++i)
         if (presetLibrary.getPresetName(i) == "General") currentPresetId_ = i + 1;
     if (currentPresetId_ > 0) {
-        controller.loadPreset(presetLibrary.getPresetFile(currentPresetId_ - 1));
+        presetSession.load(presetLibrary.getPresetFile(currentPresetId_ - 1));
         presetBox.setSelectedId(currentPresetId_, juce::dontSendNotification);
     }
     restoreSession();
@@ -160,9 +161,9 @@ MainComponent::MainComponent()
     volumeSlider.setValue(controller.getOutputGainDb(), juce::dontSendNotification);
     effectsPanel.update();
     equalizerPanel.update();
-    equalizerPanel.showValues(true);
+    updatePresetDisplay();
     equalizerPanel.setVisualiserPreferences(AppSettings::showVisualiser(), systemPrefersReducedMotion());
-    effectsPanel.showValues(true);
+
 
     // Reopening always starts grey/off. Only the power control starts routing.
     if (engine.getStatus().state == AudioEngineState::RestoreFailed) reportError(engine.getStatus());
@@ -232,121 +233,131 @@ void MainComponent::refreshPresets()
         presetBox.addItem(presetLibrary.getPresetName(i), i + 1);
 
     presetBox.addSeparator();
-    presetBox.addItem("Save current as...", kSavePresetId);
+    presetBox.addItem("Save a Custom Copy...", kSavePresetId);
     presetBox.addItem("Import...",          kImportPresetId);
     presetBox.addItem("Delete current",     kDeletePresetId);
 
-    if (presetLibrary.getNumPresets() > 0)
-    {
-        int id = currentPresetId_;
-        if (id <= 0 || id > presetLibrary.getNumPresets())
-            id = 1;
-        currentPresetId_ = id;
-        presetBox.setSelectedId(id, juce::dontSendNotification);
-    }
+    const int active = presetLibrary.indexOfFile(presetSession.file());
+    currentPresetId_ = active >= 0 ? active + 1 : (presetLibrary.getNumPresets() > 0 ? 1 : 0);
+    presetBox.setSelectedId(currentPresetId_, juce::dontSendNotification);
 }
 
-void MainComponent::doSavePreset()
+void MainComponent::updatePresetDisplay()
 {
-    auto* aw = new juce::AlertWindow("Save Preset",
-                                     "Name your preset:",
-                                     juce::MessageBoxIconType::NoIcon);
-    aw->addTextEditor("name", {}, {});
-    aw->addButton("Save",   1, juce::KeyPress(juce::KeyPress::returnKey));
-    aw->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    effectsPanel.setReference(presetSession.original());
+    equalizerPanel.setReference(presetSession.original());
+    presetLabel.setText(presetSession.edited() ? "Preset - Edited" : "Preset", juce::dontSendNotification);
+}
 
-    aw->enterModalState(true, juce::ModalCallbackFunction::create([safe = juce::Component::SafePointer<MainComponent>(this), aw](int result)
-    {
-        if (safe == nullptr) return;
-        auto* self = safe.getComponent();
-        if (result == 0)
-            return;
+bool MainComponent::loadSelectedPreset(const juce::File& file)
+{
+    if (!presetSession.load(file)) {
+        reportError({AudioEngineState::PresetFailedToLoad, file.getFileNameWithoutExtension()});
+        return false;
+    }
+    currentPresetId_ = presetLibrary.indexOfFile(file) + 1;
+    presetBox.setSelectedId(currentPresetId_, juce::dontSendNotification);
+    effectsPanel.update(); equalizerPanel.update();
+    updatePresetDisplay();
+    syncProcessingState();
+    return true;
+}
 
-        const juce::String name = aw->getTextEditorContents("name").trim();
-        if (name.isEmpty())
-            return;
+void MainComponent::requestPresetSwitch(const juce::File& file)
+{
+    if (presetDialogOpen || file == presetSession.file()) return;
+    if (!presetSession.edited()) { loadSelectedPreset(file); return; }
+    presetDialogOpen = true;
+    auto* alert = new juce::AlertWindow("Save your changes?",
+        "You edited \"" + presetSession.file().getFileNameWithoutExtension() + "\". Save a custom copy before switching presets?\nThe original preset stays unchanged.",
+        juce::MessageBoxIconType::NoIcon);
+    alert->addButton("Save a Copy...", 1, juce::KeyPress(juce::KeyPress::returnKey));
+    alert->addButton("Discard", 2);
+    alert->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    stylePresetDialog(*alert);
+    alert->enterModalState(true, juce::ModalCallbackFunction::create(
+        [safe = juce::Component::SafePointer<MainComponent>(this), file](int result) {
+            if (safe == nullptr) return;
+            safe->presetDialogOpen = false;
+            if (result == 2) safe->loadSelectedPreset(file);
+            else if (result == 1) safe->doSavePreset([safe, file] {
+                if (safe != nullptr) safe->loadSelectedPreset(file);
+            });
+        }), true);
+}
 
-        const juce::String safeName = juce::File::createLegalFileName(name);
-        const juce::File dest = self->userPresetDir().getChildFile(safeName + ".fac");
-
-        self->userPresetDir().createDirectory();
-        if (self->controller.savePreset(self->userPresetDir(), dest.getFileNameWithoutExtension()))
-        {
-            self->refreshPresets();
-            const int idx = self->presetLibrary.indexOfFile(dest);
-            if (idx >= 0)
-            {
-                self->currentPresetId_ = idx + 1;
-                self->presetBox.setSelectedId(self->currentPresetId_, juce::dontSendNotification);
-                self->layoutTopRow();
+void MainComponent::doSavePreset(std::function<void()> afterSave)
+{
+    if (presetDialogOpen) return;
+    presetDialogOpen = true;
+    auto* alert = new juce::AlertWindow("Save a Custom Copy", "Give this version a name. Existing presets will not be replaced.", juce::MessageBoxIconType::NoIcon);
+    alert->addTextEditor("name", presetSession.file().getFileNameWithoutExtension() + " Custom", {});
+    alert->addButton("Save Copy", 1, juce::KeyPress(juce::KeyPress::returnKey));
+    alert->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    stylePresetDialog(*alert);
+    alert->enterModalState(true, juce::ModalCallbackFunction::create(
+        [safe = juce::Component::SafePointer<MainComponent>(this), alert, afterSave](int result) {
+            if (safe == nullptr) return;
+            safe->presetDialogOpen = false;
+            if (result == 0) return;
+            const auto name = alert->getTextEditorContents("name").trim();
+            const auto saved = safe->presetSession.saveCopy(safe->presetLibrary, userPresetDir(), name);
+            if (saved == juce::File{}) {
+                juce::NativeMessageBox::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                    "Couldn't save copy", "Choose a valid name and a writable preset folder. Your changes are still here.", safe.getComponent());
+                return;
             }
-        }
-        else
-        {
-            self->reportError({ AudioEngineState::PresetFailedToLoad, name });
-        }
-    }), true);
+            safe->refreshPresets(); safe->updatePresetDisplay();
+            if (afterSave) afterSave();
+        }), true);
 }
 
 void MainComponent::doImportPreset()
 {
-    fileChooser_ = std::make_unique<juce::FileChooser>(
-        "Import preset (.fac)",
-        juce::File::getSpecialLocation(juce::File::userHomeDirectory),
-        "*.fac");
-
-    fileChooser_->launchAsync(
-        juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-        [this](const juce::FileChooser& fc)
-        {
-            const juce::File src = fc.getResult();
-            if (! src.existsAsFile())
-                return;
-
-            userPresetDir().createDirectory();
-            const juce::File dest = userPresetDir().getChildFile(src.getFileName());
-            if (src.copyFileTo(dest))
-            {
-                refreshPresets();
-                const int idx = presetLibrary.indexOfFile(dest);
-                if (idx >= 0)
-                    presetBox.setSelectedId(idx + 1, juce::sendNotification); // load it
-            }
-            else
-            {
-                reportError({ AudioEngineState::PresetFailedToLoad,
-                                        src.getFileNameWithoutExtension() });
-            }
+    if (presetDialogOpen) return;
+    fileChooser_ = std::make_unique<juce::FileChooser>("Import preset (.fac)",
+        juce::File::getSpecialLocation(juce::File::userHomeDirectory), "*.fac");
+    fileChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        [safe = juce::Component::SafePointer<MainComponent>(this)](const juce::FileChooser& chooser) {
+            if (safe == nullptr) return;
+            const auto source = chooser.getResult();
+            if (!source.existsAsFile()) return;
+            const auto dest = safe->presetLibrary.uniqueCustomFile(userPresetDir(), source.getFileNameWithoutExtension());
+            if (dest != juce::File{} && !dest.exists() && source.copyFileTo(dest)) {
+                safe->refreshPresets(); safe->requestPresetSwitch(dest);
+            } else safe->reportError({AudioEngineState::PresetFailedToLoad, source.getFileNameWithoutExtension()});
         });
 }
 
 void MainComponent::doDeletePreset()
 {
-    const int idx = currentPresetId_ - 1;
-    if (! juce::isPositiveAndBelow(idx, presetLibrary.getNumPresets()))
-        return;
-
-    if (! presetLibrary.isCustom(idx))
-    {
+    const int index = presetLibrary.indexOfFile(presetSession.file());
+    if (index < 0 || presetDialogOpen) return;
+    if (!presetLibrary.isCustom(index)) {
         juce::NativeMessageBox::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
-            "Can't delete", "Factory presets can't be deleted.");
+            "Can't delete", "Factory presets can't be deleted.", this);
         return;
     }
-
-    const juce::File file = presetLibrary.getPresetFile(idx);
-    const juce::String name = presetLibrary.getPresetName(idx);
-
+    // Keep edited work available; deleting the saved file is a separate explicit action.
+    if (presetSession.edited()) {
+        juce::NativeMessageBox::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
+            "Save your changes first", "Save a custom copy or switch presets and discard your edits before deleting this preset.", this);
+        return;
+    }
+    const auto file = presetSession.file();
+    juce::File replacement;
+    for (int i = 0; i < presetLibrary.getNumPresets(); ++i)
+        if (!presetLibrary.isCustom(i)) { replacement = presetLibrary.getPresetFile(i); break; }
+    if (replacement == juce::File{}) return;
+    presetDialogOpen = true;
     juce::NativeMessageBox::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon,
-        "Delete preset", "Delete \"" + name + "\"? The preset will be moved to the Trash.", nullptr,
-        juce::ModalCallbackFunction::create([this, file](int r)
-        {
-            if (r != 1)
-                return;
-            if (!file.moveToTrash()) { reportError({AudioEngineState::PresetFailedToLoad, "Could not move this preset to the Trash."}); return; }
-            currentPresetId_ = 1;
-            refreshPresets();
-            presetBox.setSelectedId(currentPresetId_, juce::dontSendNotification);
-            layoutTopRow();
+        "Delete preset", "Move \"" + file.getFileNameWithoutExtension() + "\" to the Trash?", this,
+        juce::ModalCallbackFunction::create([safe = juce::Component::SafePointer<MainComponent>(this), file, replacement](int result) {
+            if (safe == nullptr) return;
+            safe->presetDialogOpen = false;
+            if (result != 1) return;
+            if (!file.moveToTrash()) { safe->reportError({AudioEngineState::PresetFailedToLoad, "Could not move this preset to the Trash."}); return; }
+            safe->refreshPresets(); safe->loadSelectedPreset(replacement);
         }));
 }
 
@@ -379,7 +390,8 @@ void MainComponent::saveSession()
     juce::DynamicObject::Ptr data = new juce::DynamicObject();
     data->setProperty("output", preferredOutput);
     data->setProperty("gain", controller.getOutputGainDb());
-    data->setProperty("preset", presetBox.getText());
+    data->setProperty("preset", presetSession.file().getFileNameWithoutExtension());
+    data->setProperty("presetFile", presetSession.file().getFullPathName());
     juce::Array<juce::var> effects, eq;
     for (int i = 0; i < DfxDsp::NumEffects; ++i) effects.add(controller.getEffect(static_cast<DfxDsp::Effect>(i)));
     for (int i = 0; i < controller.getNumEqBands(); ++i) eq.add(controller.getEqBand(i));
@@ -400,16 +412,20 @@ void MainComponent::restoreSession()
     // Earlier releases saved an effects-bypass flag. It is deliberately ignored:
     // the illuminated button now means a running engine, never a remembered wish.
     if (data.hasProperty("gain")) controller.setOutputGainDb((float)data["gain"]);
+    // Load the actual saved preset before applying recovered working edits.
+    // This preserves its reference values across restarts and retains its frequencies.
+    auto selected = data["presetFile"].toString();
+    int index = selected.isNotEmpty() ? presetLibrary.indexOfFile(juce::File(selected)) : -1;
+    if (index < 0)
+        for (int i = 0; i < presetLibrary.getNumPresets(); ++i)
+            if (presetLibrary.getPresetName(i) == data["preset"].toString()) { index = i; break; }
+    if (index >= 0) loadSelectedPreset(presetLibrary.getPresetFile(index));
     if (auto* effects = data["effects"].getArray())
         for (int i = 0; i < juce::jmin(effects->size(), (int)DfxDsp::NumEffects); ++i)
             controller.setEffect(static_cast<DfxDsp::Effect>(i), (float)(*effects)[i]);
     if (auto* eq = data["eq"].getArray())
-        for (int i = 0; i < juce::jmin(eq->size(), controller.getNumEqBands()); ++i) controller.setEqBand(i, (float)(*eq)[i]);
-    for (int i = 0; i < presetLibrary.getNumPresets(); ++i)
-        if (presetLibrary.getPresetName(i) == data["preset"].toString()) {
-            currentPresetId_ = i + 1;
-            presetBox.setSelectedId(currentPresetId_, juce::dontSendNotification);
-        }
+        for (int i = 0; i < juce::jmin(eq->size(), controller.getNumEqBands()); ++i)
+            controller.setEqBand(i, (float)(*eq)[i]);
 }
 
 void MainComponent::showSettingsMenu()
@@ -441,15 +457,15 @@ void MainComponent::showSettingsMenu()
 
 void MainComponent::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour(FXCOLOR(WindowBackground)));
+    g.fillAll(juce::Colour(FXCOLOR(WindowBackground))); // Opaque in both appearances.
 
     g.setColour(juce::Colour(FXCOLOR(HighlightedText)).withAlpha(1.0f));
     g.setFont(juce::Font(18.0f, juce::Font::bold));
-    g.drawText("Audio Enhancer", 24, 12, 150, 29, juce::Justification::centredLeft);
+    g.drawText("Audio Enhancer", 24, 10, 150, 26, juce::Justification::centredLeft);
     g.setColour(juce::Colour(FXCOLOR(DefaultText)).withAlpha(1.0f));
     g.setFont(juce::Font(12.0f));
     g.setColour(juce::Colour(FXCOLOR(DefaultText)).withAlpha(0.6f));
-    g.drawText("for Mac", 25, 43, 130, 17, juce::Justification::centredLeft);
+    g.drawText("for Mac", 25, 39, 130, 16, juce::Justification::centredLeft);
 }
 
 void MainComponent::lookAndFeelChanged()
@@ -459,50 +475,43 @@ void MainComponent::lookAndFeelChanged()
     const auto secondary = juce::Colour(FXCOLOR(DefaultText)).withAlpha(0.6f);
     presetLabel.setColour(juce::Label::textColourId, secondary);
     outputLabel.setColour(juce::Label::textColourId, secondary);
+    volumeLabel.setColour(juce::Label::textColourId, secondary);
     repaint();
 }
 
 void MainComponent::resized()
 {
-    // Header: power button (left) + volume control right beside it, styled like the
-    // effect sliders ("Volume" label above, value next to the thumb, no dB box).
-    powerButton.setBounds(180, 17, 42, 42);
-    settingsButton_.setBounds(getWidth() - kMargin - 24, 24, 24, 24);
+    // Title on the left; the two global actions form a small right-aligned group.
+    settingsButton_.setBounds(getWidth() - kMargin - 24, 21, 24, 24);
+    powerButton.setBounds(settingsButton_.getX() - 16 - 42, 12, 42, 42);
 
-    const int volBlockW = 248;
-    const int volX = powerButton.getRight() + 24;
-    volumeLabel.setBounds(volX, 14, 80, 18);
-    volumeSlider.setBounds(volX, 35, volBlockW, 24);
-
-    // Combos row — widths fit their content (see layoutTopRow)
+    // Preset, playback device and volume share one stable, full-width row.
     layoutTopRow();
 
-    // Main panels — matching Windows FxProView geometry
+    // Keep the main panels roomy beneath the compact toolbar.
     const int mainY = kHeaderH + kComboH + kGap;
-    effectsPanel.setBounds(kMargin, mainY, 196, 242);
-    equalizerPanel.setBounds(kMargin + 196 + 16, mainY, getWidth() - kMargin * 2 - 196 - 16, 242);
+    effectsPanel.setBounds(kMargin, mainY, 244, kMainH);
+    equalizerPanel.setBounds(kMargin + 244 + 16, mainY, getWidth() - kMargin * 2 - 244 - 16, kMainH);
 
 }
 
-// Size the preset + output combos to fit their currently-selected text (with a
-// sensible min/max), then lay them left-to-right. Avoids the fixed oversized boxes.
+// Stable widths keep controls from shifting when a preset or device changes.
+// Generous gaps separate the three groups without leaving an unused right half.
 void MainComponent::layoutTopRow()
 {
+    if (getWidth() == 0) return; // Selectors can change before the initial size is set.
     const int comboY = kHeaderH + 20;
-    const int comboH = 32;
+    constexpr int comboH = 32;
+    constexpr int groupGap = 24;
+    constexpr int volumeWidth = 280;
+    const int selectorsWidth = getWidth() - kMargin * 2 - groupGap * 2 - volumeWidth;
+    const int presetWidth = selectorsWidth * 44 / 100;
+    const int outputWidth = selectorsWidth - presetWidth;
 
-    auto contentWidth = [](juce::ComboBox& box, int minW, int maxW)
-    {
-        juce::Font f = box.getLookAndFeel().getComboBoxFont(box);
-        juce::String t = box.getText();
-        if (t.isEmpty()) t = box.getTextWhenNothingSelected();
-        const int w = f.getStringWidth(t) + 10 /*left pad*/ + 42 /*arrow + right pad*/;
-        return juce::jlimit(minW, maxW, w);
-    };
-
-    presetBox.setBounds(kMargin, comboY, contentWidth(presetBox, 196, 320), comboH);
-    outputBox.setBounds(presetBox.getRight() + 12, comboY,
-                        contentWidth(outputBox, 160, 460), comboH);
+    presetBox.setBounds(kMargin, comboY, presetWidth, comboH);
+    outputBox.setBounds(presetBox.getRight() + groupGap, comboY, outputWidth, comboH);
+    volumeSlider.setBounds(outputBox.getRight() + groupGap, comboY + 4, volumeWidth, 24);
     presetLabel.setBounds(presetBox.getX(), kHeaderH, presetBox.getWidth(), 16);
     outputLabel.setBounds(outputBox.getX(), kHeaderH, outputBox.getWidth(), 16);
+    volumeLabel.setBounds(volumeSlider.getX(), kHeaderH, volumeSlider.getWidth(), 16);
 }

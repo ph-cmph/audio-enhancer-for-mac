@@ -1,5 +1,3 @@
-// Independent macOS port modifications, 2026-10-28.
-// AGPL-3.0-or-later; retain original notices below. See MODIFICATIONS.md and LICENSE.
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "FxPowerButton.h"
@@ -7,6 +5,7 @@
 #include "FxEqualizer.h"
 #include "../Support/FxController.h"
 #include "../Support/PresetLibrary.h"
+#include "../Support/PresetSession.h"
 #include "../Audio/MacAudioEngine.h"
 #include "../DSP/LegacyDspAdapter.h"
 
@@ -37,7 +36,11 @@ private:
     bool errorScheduled = false;
     void layoutTopRow();          // size preset/output combos to their content + reflow
 
-    void doSavePreset();          // prompt for a name, save current state as a custom preset
+    void requestPresetSwitch(const juce::File&);
+    bool loadSelectedPreset(const juce::File&);
+    void updatePresetDisplay();
+    bool presetDialogOpen = false;
+    void doSavePreset(std::function<void()> afterSave = {});          // prompt for a name, save current state as a custom preset
     void doImportPreset();        // pick a .fac off disk, copy into the user preset folder
     void doDeletePreset();        // delete the current preset (custom only)
     void showSettingsMenu();      // gear button → close-behavior preference
@@ -47,9 +50,11 @@ private:
 
     // FxController must be first — sub-components hold a reference to it
     FxController   controller;
+    PresetSession presetSession { controller };
     MacAudioEngine engine { controller };
     PresetLibrary  presetLibrary;
 
+    std::unique_ptr<juce::Drawable> logo_;
     std::unique_ptr<juce::Drawable> settingsIcon_;
 
     int currentPresetId_ = 0;                       // ComboBox id of the active preset

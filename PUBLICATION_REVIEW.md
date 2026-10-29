@@ -29,3 +29,7 @@ Only a qualified legal professional can provide a legal opinion on all applicabl
 ## Legacy upstream notices
 
 75 inherited source files contain old Power Technology confidentiality wording. At official FxSound commit `4383180e02ff435d191f71220e8da41f9fa06951`, 73 are byte-identical to the publicly released AGPL repository. The other two (`audiopassthru/src/sndDevices/u_sndDevices.h` and `dsp/ptutil/include/File.h`) retain those same public headers with inherited function-naming and macOS compatibility changes. Original notices have not been removed. See `UPSTREAM_NOTICE_PROVENANCE.json` for exact public paths. Public availability and the repository licence are evidence of provenance, not a guarantee resolving every historical notice.
+
+## 0.4.0 update — 29 October 2026
+
+This update changes interface appearance, control readouts and preset editing. It introduces no new third-party dependencies or branding assets. Existing licences, attribution and inherited source notices remain intact. Release packages continue to pair the application with complete corresponding source, including pinned JUCE source and build scripts. Local settings, recordings, recovery journals, credentials and build working directories are excluded. The release remains an Apple Silicon preview, locally ad-hoc signed without Developer ID signing or notarisation.

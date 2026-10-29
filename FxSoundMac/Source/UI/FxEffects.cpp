@@ -1,8 +1,7 @@
-// Independent macOS port modifications, 2026-10-28.
-// AGPL-3.0-or-later; retain original notices below. See MODIFICATIONS.md and LICENSE.
 #include "FxEffects.h"
 #include "FxTheme.h"
 #include "DfxDsp.h"
+#include "ValueReadout.h"
 
 namespace {
 const char* kEffectNames[DfxDsp::NumEffects] = {
@@ -29,7 +28,9 @@ FxEffects::FxEffects(FxController& controller) : controller_(controller)
         effects_[i] = std::make_unique<FxEffectSlider>(i, controller_);
         effects_[i]->setName(kEffectNames[i]);
         effects_[i]->setSliderStyle(juce::Slider::LinearHorizontal);
-        effects_[i]->setRange(0.0, 10.0, 1.0);
+        effects_[i]->setRange(0.0, 10.0, 0.1);
+        effects_[i]->setTitle(kEffectNames[i]);
+        effects_[i]->onValueChange = [this] { repaint(); if (onEdited) onEdited(); };
         effects_[i]->setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
         addAndMakeVisible(effects_[i].get());
     }
@@ -44,12 +45,6 @@ void FxEffects::update()
         const float value = controller_.getEffect(static_cast<DfxDsp::Effect>(i));
         effects_[i]->setEffectValue(value * 10.0f);
     }
-}
-
-void FxEffects::showValues(bool show)
-{
-    for (int i = 0; i < DfxDsp::NumEffects; ++i)
-        effects_[i]->showValue(show);
 }
 
 void FxEffects::enablementChanged()
@@ -67,8 +62,8 @@ void FxEffects::resized()
     int y = Y_MARGIN;
     for (int i = 0; i < DfxDsp::NumEffects; ++i)
     {
-        labels_[i]->setBounds(X_MARGIN + FxTheme::SLIDER_THUMB_RADIUS, y, SLIDER_WIDTH, LABEL_HEIGHT);
-        effects_[i]->setBounds(X_MARGIN, labels_[i]->getBottom() + LABEL_GAP, SLIDER_WIDTH, SLIDER_HEIGHT);
+        labels_[i]->setBounds(15, y, 116, LABEL_HEIGHT);
+        effects_[i]->setBounds(X_MARGIN, labels_[i]->getBottom() + LABEL_GAP, getWidth() - X_MARGIN * 2, SLIDER_HEIGHT);
         y = effects_[i]->getBottom() + ROW_GAP;
     }
 }
@@ -82,6 +77,10 @@ void FxEffects::paint(juce::Graphics& g)
     g.setColour(juce::Colour(FXCOLOR(DefaultText)).withAlpha(0.7f));
     g.setFont(juce::Font(12.0f, juce::Font::bold));
     g.drawText("Enhancements", 16, 9, getWidth() - 32, 18, juce::Justification::centredLeft);
+    for (int i = 0; i < DfxDsp::NumEffects; ++i)
+        ValueReadout::draw(g, {132, labels_[i]->getY(), getWidth() - 148, 16},
+            controller_.getEffect(static_cast<DfxDsp::Effect>(i)) * 10.0f,
+            reference_.effects[static_cast<size_t>(i)] * 10.0f, false, isEnabled(), false);
 }
 
 // ──────────────────────────────────────────────────────── FxEffectSlider
@@ -92,55 +91,21 @@ FxEffects::FxEffectSlider::FxEffectSlider(int effect, FxController& controller)
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
     setWantsKeyboardFocus(true);
 
-    value_label_.getProperties().set("useOwnFont", true);
-    value_label_.setFont(juce::Font(10.5f));
-    value_label_.setJustificationType(juce::Justification::centredLeft);
-    value_label_.setInterceptsMouseClicks(false, false);
-    addChildComponent(value_label_);
 }
 
 void FxEffects::FxEffectSlider::setEffectValue(float displayValue)
 {
     setValue(displayValue, juce::dontSendNotification);
-
-    value_label_.setText(juce::String::formatted("%.0f", displayValue), juce::dontSendNotification);
-    const auto pos = getPositionOfValue(displayValue);
-    value_label_.setBounds(value_label_.getBounds().withX((int)(pos + FxTheme::SLIDER_THUMB_RADIUS + 1)));
-}
-
-void FxEffects::FxEffectSlider::showValue(bool show)
-{
-    value_label_.setVisible(show && isEnabled());
 }
 
 void FxEffects::FxEffectSlider::enablementChanged()
 {
-    setMouseCursor(isEnabled() ? juce::MouseCursor::PointingHandCursor
-                               : juce::MouseCursor::NormalCursor);
-    value_label_.setVisible(isEnabled() && value_label_.isVisible());
-}
-
-void FxEffects::FxEffectSlider::resized()
-{
-    juce::Slider::resized();
-    value_label_.setBounds(value_label_.getX(), (getHeight() - LABEL_HEIGHT) / 2,
-                           FxTheme::SLIDER_THUMB_RADIUS * 3, LABEL_HEIGHT);
+    setMouseCursor(isEnabled() ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
 }
 
 void FxEffects::FxEffectSlider::valueChanged()
 {
-    const float displayValue = (float)getValue();
-    const float controlValue = displayValue / 10.0f;
-    const float current = controller_.getEffect(static_cast<DfxDsp::Effect>(effect_));
-
-    if (std::abs(controlValue - current) > 0.001f)
-    {
-        controller_.setEffect(static_cast<DfxDsp::Effect>(effect_), controlValue);
-
-        value_label_.setText(juce::String::formatted("%.0f", displayValue), juce::dontSendNotification);
-        const auto pos = getPositionOfValue(displayValue);
-        value_label_.setBounds(value_label_.getBounds().withX((int)(pos + FxTheme::SLIDER_THUMB_RADIUS + 1)));
-    }
+    controller_.setEffect(static_cast<DfxDsp::Effect>(effect_), static_cast<float>(getValue()) / 10.0f);
 }
 
 bool FxEffects::FxEffectSlider::keyPressed(const juce::KeyPress& key)

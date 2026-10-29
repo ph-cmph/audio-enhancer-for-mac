@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(FxSoundMac VERSION 0.3.0 LANGUAGES C CXX OBJCXX)
+project(FxSoundMac VERSION 0.4.0 LANGUAGES C CXX OBJCXX)
 
 # Must be called before any add_test() calls, including those in subdirectories.
 enable_testing()
@@ -101,6 +101,8 @@ target_sources(FxSoundMacTests PRIVATE
     Tests/DspProbeTest.cpp
     Tests/LegacyDspAdapterTest.cpp
     Tests/SystemVolumeBridgeTest.cpp
+    Tests/PresetSessionTest.cpp
+    Tests/ThemePaletteTest.cpp
     Tests/AudioActivityTest.cpp
     Tests/DeviceValidationTest.cpp
     Tests/PresetLibraryTest.cpp

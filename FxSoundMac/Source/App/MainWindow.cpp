@@ -1,5 +1,8 @@
+// Independent macOS port modifications, 2026-10-29.
+// AGPL-3.0-or-later; retain upstream notices. See LICENSE.
 #include "MainWindow.h"
 #include "../UI/MainComponent.h"
+#include "../UI/FxTheme.h"
 #include "../Support/AppSettings.h"
 
 MainWindow::MainWindow(const juce::String& name)
@@ -13,6 +16,13 @@ MainWindow::MainWindow(const juce::String& name)
     setResizable(false, false);
     centreWithSize(getWidth(), getHeight());
     setVisible(true);
+}
+
+void MainWindow::lookAndFeelChanged()
+{
+    const auto background = juce::Colour(FXCOLOR(WindowBackground));
+    if (getBackgroundColour() != background) setBackgroundColour(background);
+    juce::DocumentWindow::lookAndFeelChanged();
 }
 
 void MainWindow::closeButtonPressed()

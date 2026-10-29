@@ -1,10 +1,6 @@
-// Independent macOS port modifications, 2026-10-28.
+// Independent macOS port modifications, 2026-10-29.
 // AGPL-3.0-or-later; retain original notices below. See MODIFICATIONS.md and LICENSE.
 #include "FxTheme.h"
-
-const juce::uint32 FxTheme::theme_colors_[FxColor::NumColors] = {
-    0x1C1C1E, 0x242426, 0x2C2C2E, 0x545458, 0xE5E5E7, 0x202022, 0xFFFFFF, 0x3A4B62, 0xF5F5F7, 0x303033, 0x0A84FF, 0x64A8FF, 0x29292C, 0x64A8FF, 0x64A8FF, 0x64A8FF, 0x43434A, 0x64A8FF, 0x29292C, 0x8E8E93, 0x1C1C1E
-};
 
 FxTheme::FxTheme() : LookAndFeel_V4()
 {
@@ -279,12 +275,7 @@ juce::Font FxTheme::getTitleFont()
 
 juce::uint32 FxTheme::getColor(FxColor color)
 {
-    static constexpr juce::uint32 light[NumColors] = {
-        0xF5F5F7, 0xFFFFFF, 0xFFFFFF, 0xC7C7CC, 0x1D1D1F, 0xF2F2F4, 0x1D1D1F,
-        0xD9E9FC, 0x1D1D1F, 0xFFFFFF, 0x007AFF, 0x007AFF, 0xFFFFFF, 0x007AFF,
-        0x007AFF, 0x007AFF, 0xFFFFFF, 0x007AFF, 0xFFFFFF, 0x8E8E93, 0xF5F5F7
-    };
-    return juce::Desktop::getInstance().isDarkModeActive() ? theme_colors_[color] : light[color];
+    return FxPalette::color(color, juce::Desktop::getInstance().isDarkModeActive());
 }
 
 juce::Rectangle<int> FxTheme::getTooltipBounds(const juce::String& tipText,

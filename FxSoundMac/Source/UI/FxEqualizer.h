@@ -1,8 +1,7 @@
-// Independent macOS port modifications, 2026-10-28.
-// AGPL-3.0-or-later; retain original notices below. See MODIFICATIONS.md and LICENSE.
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "FxController.h"
+#include "PresetSession.h"
 #include "../Audio/AudioActivity.h"
 
 class FxEqualizer : public juce::Component,
@@ -15,12 +14,13 @@ public:
 
     void reinit(int num_bands);
     void update();
-    void showValues(bool show);
+    void setReference(const PresetValues& values) { reference_ = values; repaint(); }
+    std::function<void()> onEdited;
     void setProcessingState(bool running);
     void setControlsEnabled(bool enabled);
     void setVisualiserPreferences(bool enabled, bool reducedMotion);
 
-    void sliderValueChanged(juce::Slider*) override { repaint(); }
+    void sliderValueChanged(juce::Slider*) override { repaint(); if (onEdited) onEdited(); }
     void sliderDragStarted(juce::Slider* slider) override;
     void sliderDragEnded(juce::Slider* slider) override;
     void timerCallback(int timerId) override;
@@ -33,24 +33,19 @@ private:
         ~FxEqSlider() override = default;
 
         void setGainValue(float db);
-        void showValue(bool show);
         void enablementChanged() override;
 
     private:
-        static constexpr int LABEL_HEIGHT = 12;
-
-        void resized() override;
         void valueChanged() override;
         bool keyPressed(const juce::KeyPress& key) override;
         void mouseDown(const juce::MouseEvent& e) override;
 
-        juce::Label gain_label_;
         int band_;
         FxController& controller_;
     };
 
     static constexpr int WIDTH             = 776;
-    static constexpr int HEIGHT            = 242;
+    static constexpr int HEIGHT            = 260;
     static constexpr int SLIDER_HEIGHT     = 150;
     static constexpr int LABEL_HEIGHT      = 16;  // room for freq label so it isn't vertically clipped
     static constexpr int X_MARGIN         = 16;
@@ -67,6 +62,7 @@ private:
     void paintSpectrum(juce::Graphics&);
 
     FxController& controller_;
+    PresetValues reference_;
     AudioActivityTap& activity_;
     AudioSpectrum spectrum_;
     juce::Label activityLabel_;

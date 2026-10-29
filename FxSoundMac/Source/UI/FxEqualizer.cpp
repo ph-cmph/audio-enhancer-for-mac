@@ -1,7 +1,6 @@
-// Independent macOS port modifications, 2026-10-28.
-// AGPL-3.0-or-later; retain original notices below. See MODIFICATIONS.md and LICENSE.
 #include "FxEqualizer.h"
 #include "FxTheme.h"
+#include "ValueReadout.h"
 
 // ──────────────────────────────────────────────────────────── helpers
 
@@ -150,8 +149,10 @@ void FxEqualizer::reinit(int num_bands)
         // Pass the DSP band index so the slider calls setEqBand(dsp_band, ...)
         band_boosts_[i] = std::make_unique<FxEqSlider>(dsp_band, MAX_GAIN, controller_);
         band_boosts_[i]->setSliderStyle(juce::Slider::LinearVertical);
-        band_boosts_[i]->setRange(-MAX_GAIN, MAX_GAIN, 1.0);
+        band_boosts_[i]->setRange(-MAX_GAIN, MAX_GAIN, 0.1);
         band_boosts_[i]->setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+        band_boosts_[i]->setTitle(freqLabel(band_frequencies_[i]) + " Hz gain");
+        band_boosts_[i]->setTextValueSuffix(" dB");
         band_boosts_[i]->addListener(this);
         addAndMakeVisible(band_boosts_[i].get());
         band_boosts_[i]->setEnabled(isEnabled() && controlsEnabled_);
@@ -176,12 +177,6 @@ void FxEqualizer::update()
     // Silent slider updates invalidate only the narrow child bounds. The curve
     // belongs to this parent and crosses the gaps, so redraw it as one surface.
     repaint();
-}
-
-void FxEqualizer::showValues(bool show)
-{
-    for (auto& s : band_boosts_)
-        s->showValue(show);
 }
 
 void FxEqualizer::enablementChanged()
@@ -209,7 +204,6 @@ void FxEqualizer::sliderDragStarted(juce::Slider* slider)
             if (band_boosts_[i].get() != slider)
             {
                 band_boosts_[i]->setEnabled(false);
-                band_boosts_[i]->showValue(false);
                 band_gain_values_[i] = controller_.getEqBand(band_indices_[i]);
             }
         }
@@ -227,11 +221,12 @@ void FxEqualizer::sliderDragEnded(juce::Slider* slider)
         if (band_boosts_[i].get() != slider)
         {
             band_boosts_[i]->setEnabled(true);
-            band_boosts_[i]->showValue(true);
             controller_.setEqBand(band_indices_[i], band_gain_values_[i]);
             band_boosts_[i]->setValue(band_gain_values_[i], juce::dontSendNotification);
         }
     }
+    repaint();
+    if (onEdited) onEdited();
 }
 
 void FxEqualizer::timerCallback(int timerId)
@@ -324,6 +319,14 @@ void FxEqualizer::paint(juce::Graphics& g)
     // Use display count (capped), not the raw DSP band count, for all drawing loops
     const int n = (int)band_boosts_.size();
     if (n < 2) return;
+    const int columnWidth = (getWidth() - X_MARGIN * 2) / n;
+    for (int i = 0; i < n; ++i) {
+        const int band = band_indices_[i];
+        const float current = controller_.getEqBand(band);
+        const float original = band < static_cast<int>(reference_.eq.size()) ? reference_.eq[static_cast<size_t>(band)] : current;
+        ValueReadout::draw(g, {X_MARGIN + i * columnWidth, Y_MARGIN + SLIDER_HEIGHT + 24, columnWidth, 30},
+            current, original, true, isEnabled() && controlsEnabled_, true);
+    }
 
     juce::Colour line_colour = juce::Colour(FXCOLOR(SliderTrack)).withAlpha(1.0f);
     juce::Colour grad_hi     = juce::Colour(FXCOLOR(EqStart)).withAlpha(0.12f);
@@ -386,59 +389,22 @@ FxEqualizer::FxEqSlider::FxEqSlider(int band, float max_gain, FxController& cont
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
     setWantsKeyboardFocus(true);
 
-    gain_label_.getProperties().set("useOwnFont", true);
-    gain_label_.setFont(juce::Font(10.5f));
-    gain_label_.setJustificationType(juce::Justification::centred);
-    gain_label_.setBorderSize(juce::BorderSize<int>(0));
-    gain_label_.setMinimumHorizontalScale(0.5f);
-    gain_label_.setInterceptsMouseClicks(false, false);
-    addChildComponent(gain_label_);
 }
 
 void FxEqualizer::FxEqSlider::setGainValue(float db)
 {
     setValue(db, juce::dontSendNotification);
-
-    gain_label_.setText(juce::String::formatted(db == 0.0f ? "%.0f" : "%+.0f", db),
-                        juce::dontSendNotification);
-    const int y = (int)(getPositionOfValue(db)) - FxTheme::SLIDER_THUMB_RADIUS * 3;
-    gain_label_.setBounds(gain_label_.getBounds().withY(y));
-}
-
-void FxEqualizer::FxEqSlider::showValue(bool show)
-{
-    gain_label_.setVisible(show && isEnabled());
 }
 
 void FxEqualizer::FxEqSlider::enablementChanged()
 {
-    setMouseCursor(isEnabled() ? juce::MouseCursor::PointingHandCursor
-                               : juce::MouseCursor::NormalCursor);
-    if (!isEnabled())
-        gain_label_.setVisible(false);
-}
-
-void FxEqualizer::FxEqSlider::resized()
-{
-    juce::Slider::resized();
-    gain_label_.setBounds(gain_label_.getX(), gain_label_.getY(), getWidth(), LABEL_HEIGHT);
+    setMouseCursor(isEnabled() ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
 }
 
 void FxEqualizer::FxEqSlider::valueChanged()
 {
-    const float db = (float)getValue();
-    if (std::abs(db - controller_.getEqBand(band_)) > 0.001f)
-    {
-        controller_.setEqBand(band_, db);
-
-        gain_label_.setText(juce::String::formatted(db == 0.0f ? "%.0f" : "%+.0f", db),
-                            juce::dontSendNotification);
-        const int y = (int)(getPositionOfValue(db)) - FxTheme::SLIDER_THUMB_RADIUS * 3;
-        gain_label_.setBounds(gain_label_.getBounds().withY(y));
-    }
-
-    if (auto* parent = getParentComponent())
-        parent->repaint();
+    controller_.setEqBand(band_, static_cast<float>(getValue()));
+    if (auto* parent = getParentComponent()) parent->repaint();
 }
 
 bool FxEqualizer::FxEqSlider::keyPressed(const juce::KeyPress& key)

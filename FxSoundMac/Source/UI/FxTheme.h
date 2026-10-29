@@ -1,17 +1,9 @@
-// Independent macOS port modifications, 2026-10-28.
+// Independent macOS port modifications, 2026-10-29.
 // AGPL-3.0-or-later; retain original notices below. See MODIFICATIONS.md and LICENSE.
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
 
-enum FxColor : int
-{
-    WindowBackground, WidgetBackground, MenuBackground, Outline,
-    DefaultText, DefaultFill, HighlightedText, HighlightedFill, MenuText,
-    ComboBoxBackground, TextButtonBackground, ImageButton,
-    ControlBackground, SliderTrack, SliderHighlight,
-    GraphHigh, GraphLow, EqStart, EqEnd, VerticalSliderLow, PanelBackground,
-    NumColors
-};
+#include "FxPalette.h"
 
 class FxTheme : public juce::LookAndFeel_V4, private juce::DarkModeSettingListener
 {
@@ -72,7 +64,6 @@ private:
     juce::Typeface::Ptr font_600_;
     juce::Typeface::Ptr font_700_;
 
-    static const juce::uint32 theme_colors_[NumColors];
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FxTheme)
 };

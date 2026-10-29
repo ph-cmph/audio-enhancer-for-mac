@@ -13,6 +13,8 @@ public:
     bool isCustom(int index) const;                 // true → user preset (deletable)
     int  indexOfFile(const juce::File& file) const; // -1 if not present
 
+    juce::File uniqueCustomFile(const juce::File& directory, const juce::String& requestedName) const;
+
 private:
     struct Entry { juce::File file; bool custom; };
     juce::Array<Entry> presets; // sorted alphabetically by name, case-insensitive

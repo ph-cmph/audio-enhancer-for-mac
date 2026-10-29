@@ -51,3 +51,17 @@ Files added or changed relative to the pinned primary macOS base:
 - `dsp/u_DfxDsp.h`
 
 JUCE 7.0.12 retains its original licensing. Its SDK compatibility change is reproducibly applied by `FxSoundMac/patches/patch_juce_windowing.py`.
+
+## 0.3.1 — 29 October 2026
+
+Corrected opaque light/dark palette colours and native-window refresh during appearance changes. Added `FxSoundMac/Source/UI/FxPalette.h` and `FxSoundMac/Tests/ThemePaletteTest.cpp`; updated FxTheme, MainComponent, MainWindow and the build version. Original notices remain intact.
+
+## 0.3.2 — 29 October 2026
+
+Rebalanced MainComponent header/control rows, aligned labels, and kept selector positions stable. Updated the build version. No DSP or routing logic changed.
+
+## 2026-10-29 — numeric readouts and preset edit protection (0.4.0)
+
+Added fixed enhancement and EQ readouts with quiet original-value references, and a compact toolbar. Added PresetSession tracking, guarded preset switching, explicit save-copy naming without overwrites, stable file-based selection after rescans, session baseline recovery, and safer import/delete selection handling. Save failures retain the working settings. Replaced problematic non-ASCII action labels with English ASCII text and gave dialog alternatives a quieter appearance.
+
+Validation: preset edit/copy tests exercise original-file preservation, custom-name collisions, saved-value round trips, restored edits, failed loads/saves and independent master-volume/power state. Existing audio, routing, palette and bundle checks also run. The installed private build passed its test suite and strict signature verification. Live dark-mode UI showed fixed readouts and original references, the edited indicator, the switch prompt, and active audio visualisation. The neutral public 0.4.0 build also passes both CTest suites and strict local signature verification. It retains the public name, original artwork, attribution and licence notices.
